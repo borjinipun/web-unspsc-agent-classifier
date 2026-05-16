@@ -88,17 +88,51 @@ async function searchNode(state) {
 }
 
 async function retrievalNode(state) {
-    const query = `${state.partNumber} ${state.description} ${state.refinedContext}`.trim();
-    const topCandidates = await searchCandidates(query, 30);
-    
-    import('./ui.js').then(ui => ui.renderTopCandidates(topCandidates));
-    
+    // Only use user provided description as requested
+    const query = state.description.trim();
+    const topCandidates = await searchCandidates(query, 40); // Optimum K = 40 for UNSPSC retrieval
+
+    // UI rendering of candidates removed as requested
+    // import('./ui.js').then(ui => ui.renderTopCandidates(topCandidates));
+
     return { topCandidates };
 }
 
 // Execute Level with Max 1 Retry
 async function executeLevelWithRetry(state, levelName, getOptionsFn, parentPath, cardLevel) {
-    let options = { ...getOptionsFn() };
+    let allOptions = { ...getOptionsFn() };
+    let options = {};
+
+    // Filter options based on Top K candidates to focus classification
+    if (state.topCandidates && state.topCandidates.length > 0) {
+        const candidateCodes = state.topCandidates.map(c => c.code);
+
+        // Find which of allOptions are ancestors of or directly are the top candidates
+        // We look at the 'path' property if available, or just check the hierarchy
+        for (let [code, details] of Object.entries(allOptions)) {
+            // Check if this option (Segment, Family, or Class) is an ancestor of any top candidate
+            const isRelevant = state.topCandidates.some(cand => {
+                // Commodity codes contain ancestor codes in their structure 
+                // e.g. Seg (2 digits) + Fam (2) + Cls (2) + Com (2)
+                return cand.code.startsWith(code.substring(0, cardLevel * 2));
+            });
+
+            if (isRelevant) {
+                options[code] = details;
+            }
+        }
+
+        // Fallback: If filtering returns nothing (rare), use all options
+        if (Object.keys(options).length === 0) {
+            appendTrace(`Filtering resulted in 0 options for ${levelName}. Falling back to all options.`, "warning");
+            options = allOptions;
+        } else {
+            appendTrace(`Filtered ${levelName} from ${Object.keys(allOptions).length} to ${Object.keys(options).length} options based on Top K retrieval.`, "info");
+        }
+    } else {
+        options = allOptions;
+    }
+
     let attempt = 0;
     let feedback = null;
     let bestResult = null;
@@ -261,8 +295,6 @@ els.classifyBtn.addEventListener('click', async () => {
     els.classifyBtn.disabled = true;
     els.classifyBtn.textContent = '⏳ Classifying...';
     els.resultsContainer.innerHTML = '';
-    els.candidatesSection.classList.add('hidden');
-    els.candidatesList.innerHTML = '';
     const threshold = parseInt(els.confSlider.value) / 100.0;
 
     try {
