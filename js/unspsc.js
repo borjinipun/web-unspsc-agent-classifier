@@ -77,7 +77,8 @@ export function getAllCommodities() {
                         title: com.title,
                         definition: com.definition || "",
                         path: `${seg.title} > ${fam.title} > ${cls.title}`,
-                        fullText: `${com.title} ${com.definition || ""} ${seg.title} ${fam.title} ${cls.title}`.trim()
+                        // User requested format: Level 1 Title > Level 2 Title > Level 3 Title > Level 4 Title
+                        fullText: `${seg.title} > ${fam.title} > ${cls.title} > ${com.title}`.trim()
                     });
                 }
             }

@@ -1,82 +1,77 @@
-# UNSPSC EdgeClassifier
+# Agentic UNSPSC Classifier
 
-A fully private, 100% offline, local-first web application that classifies procurement parts into the UNSPSC hierarchy using agentic LLM reasoning.
+A fully private, 100% offline, local-first web application that classifies procurement parts into the UNSPSC hierarchy using agentic LLM reasoning and recursive semantic vector retrieval.
 
-Powered by **WebLLM** and **WebGPU**, this application runs a large language model (`Phi-3.5-mini-instruct`) entirely inside your browser. No API keys, no server costs, and absolutely zero data leaves your machine.
+Powered by **WebLLM**, **WebGPU**, and **Transformers.js**, this application runs a large language model (`Phi-3.5-mini-instruct`) and an embedding model entirely inside your browser. No API keys, no server costs, and absolutely zero data leaves your machine.
 
 ## 🌟 Live URL
 
 🔗 Use the app at [https://borjinipun.github.io/web-unspsc-agent-classifier/](https://borjinipun.github.io/web-unspsc-agent-classifier/)
 
-## Features
+## Key Features
 
 - **100% Client-Side Inference:** Powered by `@mlc-ai/web-llm` utilizing your device's GPU via WebGPU.
-- **Agentic LangGraph Orchestration:** Iteratively navigates the UNSPSC taxonomy (Segment -> Family -> Class -> Commodity) using a custom, 100% offline implementation of the LangGraph state-based architecture.
-- **Retrospective Auditing:** At each classification level, a secondary LLM auditor dynamically reviews the chosen category. If hallucination or incorrect logic is detected, the agent halts to prevent bad routing and suggests an alternative.
-- **Resilient Context Extraction:** Automatically fetches web search snippets to distill actionable context. If the web proxy fails or you are offline, it seamlessly falls back to **Zero-Shot Context Inference**, predicting the industry and use-case purely from the Part Number.
-- **Flexible Hardware Support:** Dynamically switch between Gemma-2B (Mobile/Light), Phi-3.5-mini (Balanced), and Llama-3.1-8B (Heavy laptops).
+- **Recursive Subtree Retrieval:** Unlike standard RAG, this system performs a fresh semantic retrieval at *every* taxonomic level (L1 -> L4), restricted to the selected branch to ensure 100% hierarchical integrity.
+- **Agentic Audit & Reflection:** Every classification step is reviewed by a secondary **Auditor LLM**. If the choice is rejected, the agent performs a targeted retry with negative feedback to eliminate "hallucination loops."
+- **Dashboard UI (High-Density):** Optimized for 1800px+ screens with a premium glassmorphism design. All diagnostic tools (Top K Retrieval and Agent Trace) are anchored as collapsible footers to maximize vertical space.
+- **Enriched Prompting:** Classification options are dynamically enriched with real-world examples fetched from the semantic retrieval engine (e.g., L2 Family choices are appended with "Top Matches: [Commodity A, B, C]").
+- **Resilient Web Context:** Automatically fetches and distills product context via DuckDuckGo, with a zero-shot inference fallback for air-gapped environments.
 
-## Agentic Workflow
+## Agentic Logic & Workflow
 
-The application runs a local State-Graph loop that recursively classifies the product, performing a secondary validation (audit) at every single level to prevent hallucination.
+The application orchestrates a complex agentic loop that balances hierarchical taxonomy with per-level semantic search.
 
 ```mermaid
 graph TD
-    A[Input: Part Number & Description] --> B(Search Node: Web Context / Zero-Shot)
+    A[Input: Part & Desc] --> B(Search Node: Web Context)
+    B --> C(Retrieval Node: Global Top 100)
     
-    B --> C{Level 1: Segment}
-    C -->|Classify| C1[Auditor LLM Reviews]
-    C1 -->|Correct & High Confidence| D{Level 2: Family}
-    C1 -->|Incorrect or Low Confidence| Z((END: Output Result))
+    C --> D{L1: Segment}
+    D --> D_AUD[Auditor Node]
+    D_AUD -->|Rejected| D
+    D_AUD -->|Approved| E(Filter Subtree: L1 Selected)
     
-    D -->|Classify| D1[Auditor LLM Reviews]
-    D1 -->|Correct & High Confidence| E{Level 3: Class}
-    D1 -->|Incorrect or Low Confidence| Z
+    E --> F{L2: Family}
+    F --> F_AUD[Auditor Node]
+    F_AUD -->|Rejected| F
+    F_AUD -->|Approved| G(Filter Subtree: L2 Selected)
     
-    E -->|Classify| E1[Auditor LLM Reviews]
-    E1 -->|Correct & High Confidence| F{Level 4: Commodity}
-    E1 -->|Incorrect or Low Confidence| Z
+    G --> H{L3: Class}
+    H --> H_AUD[Auditor Node]
+    H_AUD -->|Rejected| H
+    H_AUD -->|Approved| I(Filter Subtree: L3 Selected)
     
-    F -->|Classify| F1[Auditor LLM Reviews]
-    F1 --> Z
+    I --> J{L4: Commodity}
+    J --> K((END: Final Result))
     
-    classDef default fill:#1E293B,stroke:#3B82F6,stroke-width:2px,color:#fff;
-    classDef node fill:#3B82F6,stroke:#1E40AF,stroke-width:2px,color:#fff;
-    classDef endnode fill:#10B981,stroke:#047857,stroke-width:2px,color:#fff;
-    class Z endnode;
+    style D_AUD fill:#f96,stroke:#333
+    style F_AUD fill:#f96,stroke:#333
+    style H_AUD fill:#f96,stroke:#333
 ```
+
+### The "Subtree-Aware" Advantage
+Standard vector search often ignores hierarchical constraints. The **Agentic UNSPSC Classifier** solves this by:
+1. **Global Retrieval**: Finds the top 100 commodities across the entire 150k+ list to identify the general "vicinity" of the product.
+2. **Path Injection**: The full hierarchical path (`L1 > L2 > L3 > L4`) of the top candidates is used to guide the LLM at every level.
+3. **Local Filtering**: At each transition (e.g., once a Segment is picked), the vector search is re-run, filtering the index to *only* allow codes that are valid children of the current selection.
 
 ## Tech Stack
 
 - **Frontend:** Vanilla HTML5, CSS3, JavaScript (ES6 Modules)
-- **Styling:** Custom CSS with Glassmorphism, Dark Mode, and CSS Variables. No external CSS frameworks.
-- **Inference Engine:** WebLLM (MLC-AI) via WebGPU
-- **Default Model:** `Phi-3.5-mini-instruct-q4f16_1-MLC` (approx. 2.3GB)
-- **Data:** Pre-processed `unspsc.json` loaded directly into memory.
+- **Inference:** WebLLM (MLC-AI) via WebGPU.
+- **Embeddings:** Transformers.js (`all-MiniLM-L6-v2`).
+- **Model:** `Phi-3.5-mini-instruct-q4f16_1-MLC` (approx. 2.3GB).
+- **Architecture:** LangGraph-inspired state machine.
 
 ## How to Run Locally
 
-Because the application fetches local files (like `unspsc.json` and model chunks), you cannot simply double-click the `index.html` file due to browser CORS restrictions. You must run a local web server:
-
 1. Clone this repository.
-2. Navigate to the project root in your terminal.
-3. Start a local HTTP server in the root directory:
+2. Start a local HTTP server (required for CORS and WebGPU modules):
    ```bash
    python -m http.server 8000
    ```
-4. Open your WebGPU-enabled browser (Chrome, Edge) and navigate to `http://localhost:8000`.
-
-## Deployment (GitHub Pages)
-
-Since this project consists purely of static files (`index.html`, `style.css`, `js/*.js`, and `unspsc.json`), it is designed to be hosted entirely for free on **GitHub Pages**.
-
-To deploy to GitHub Pages:
-1. Go to your GitHub repository **Settings** > **Pages**.
-2. Under "Build and deployment", select **Deploy from a branch**.
-3. Select your `main` branch.
-4. Set the directory to `/(root)`.
-5. Save and wait for the deployment to finish! Your application is now live at `https://<your-username>.github.io/<repository-name>/`.
+3. Open a WebGPU-enabled browser (Chrome 113+, Edge) to `http://localhost:8000`.
 
 ## Explainability & Privacy
 
-Privacy is a core tenet of this tool. No product data is ever sent to an external LLM provider. The web search is performed via a CORS proxy for context enrichment, but the actual classification logic executes locally on your GPU. The expandable Debug Traces allow users to audit the exact reasoning path the model took to reach its final UNSPSC commodity code.
+Privacy is the core tenet of this tool. No product data is ever sent to an external LLM provider. The **Agent Trace Log** provides full transparency into the semantic search results, auditor feedback, and the deterministic path taken for every classification.

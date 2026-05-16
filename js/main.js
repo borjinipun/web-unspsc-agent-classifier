@@ -1,5 +1,5 @@
 // main.js
-import { els, initUI, appendTrace, renderCard, renderFinalSummary, renderSearchContext, renderError } from './ui.js';
+import { els, initUI, appendTrace, renderCard, renderFinalSummary, renderSearchContext, renderError, renderTopCandidates } from './ui.js';
 import { loadUNSPSC, isUNSPSCLoaded, getSegments, getFamilies, getClasses, getCommodities } from './unspsc.js';
 import { initEngine, isEngineLoaded, classifyLevel, refineSearchContext, auditClassification } from './llm.js';
 import { StateGraph, START, END, Annotation } from "./langgraph.js";
@@ -48,7 +48,6 @@ els.loadModelBtn.addEventListener('click', async () => {
 const AgentState = Annotation.Root({
     partNumber: Annotation(),
     description: Annotation(),
-    threshold: Annotation(),
     refinedContext: Annotation(),
     topCandidates: Annotation(),
 
@@ -70,7 +69,12 @@ const AgentState = Annotation.Root({
 
     finalLevel: Annotation(),
     lastCode: Annotation(),
-    lastTitle: Annotation()
+    lastTitle: Annotation(),
+    
+    l1Correct: Annotation(), l1Feedback: Annotation(),
+    l2Correct: Annotation(), l2Feedback: Annotation(),
+    l3Correct: Annotation(), l3Feedback: Annotation(),
+    l4Correct: Annotation(), l4Feedback: Annotation()
 });
 
 // Graph Nodes
@@ -90,53 +94,55 @@ async function searchNode(state) {
 async function retrievalNode(state) {
     // Only use user provided description as requested
     const query = state.description.trim();
-    const topCandidates = await searchCandidates(query, 40); // Optimum K = 40 for UNSPSC retrieval
-
-    // UI rendering of candidates removed as requested
-    // import('./ui.js').then(ui => ui.renderTopCandidates(topCandidates));
+    const topCandidates = await searchCandidates(query, 100); // K=100 for robust filtering
+    
+    // Show candidates in the sidebar
+    renderTopCandidates(topCandidates);
 
     return { topCandidates };
 }
 
-// Execute Level with Max 1 Retry
-async function executeLevelWithRetry(state, levelName, getOptionsFn, parentPath, cardLevel) {
+// Execute Level with Max 1 Retry (Same level)
+async function executeLevel(state, levelName, getOptionsFn, parentPath, cardLevel, parentCode = null) {
     let allOptions = { ...getOptionsFn() };
     let options = {};
 
-    // Filter options based on Top K candidates to focus classification
-    if (state.topCandidates && state.topCandidates.length > 0) {
-        const candidateCodes = state.topCandidates.map(c => c.code);
-
-        // Find which of allOptions are ancestors of or directly are the top candidates
-        // We look at the 'path' property if available, or just check the hierarchy
+    // Perform fresh retrieval for this specific subtree
+    const query = state.description.trim();
+    // Use K=20 for subtree focus
+    const subtreeCandidates = await searchCandidates(query, 20, parentCode);
+    
+    // Filter options based on subtree candidates
+    if (subtreeCandidates.length > 0) {
         for (let [code, details] of Object.entries(allOptions)) {
-            // Check if this option (Segment, Family, or Class) is an ancestor of any top candidate
-            const isRelevant = state.topCandidates.some(cand => {
-                // Commodity codes contain ancestor codes in their structure 
-                // e.g. Seg (2 digits) + Fam (2) + Cls (2) + Com (2)
+            const matchingChildren = subtreeCandidates.filter(cand => {
                 return cand.code.startsWith(code.substring(0, cardLevel * 2));
             });
 
-            if (isRelevant) {
-                options[code] = details;
+            if (matchingChildren.length > 0) {
+                // Enrich title with examples from subtree Top K
+                const examples = matchingChildren
+                    .slice(0, 3) 
+                    .map(c => c.title)
+                    .join(", ");
+                
+                options[code] = {
+                    ...details,
+                    title: `${details.title} (Top Matches: ${examples}...)`
+                };
             }
         }
-
-        // Fallback: If filtering returns nothing (rare), use all options
-        if (Object.keys(options).length === 0) {
-            appendTrace(`Filtering resulted in 0 options for ${levelName}. Falling back to all options.`, "warning");
-            options = allOptions;
-        } else {
-            appendTrace(`Filtered ${levelName} from ${Object.keys(allOptions).length} to ${Object.keys(options).length} options based on Top K retrieval.`, "info");
-        }
+        
+        // Fallback: if no candidates match children, use all options
+        if (Object.keys(options).length === 0) options = allOptions;
+        else appendTrace(`Filtered ${levelName} to ${Object.keys(options).length} options via subtree search.`, "info");
     } else {
         options = allOptions;
     }
 
     let attempt = 0;
     let feedback = null;
-    let bestResult = null;
-    let finalDebug = null;
+    let finalResult = null;
 
     while (attempt < 2) {
         if (Object.keys(options).length === 0) break;
@@ -144,117 +150,84 @@ async function executeLevelWithRetry(state, levelName, getOptionsFn, parentPath,
         const classification = await classifyLevel(levelName, options, parentPath, state.partNumber, state.description, state.refinedContext, feedback);
         const code = classification.selected_code;
         const title = options[code] ? options[code].title : "Unknown";
-        finalDebug = classification._debug;
 
+        appendTrace(`Auditing ${levelName}: ${title}...`, "info");
         const audit = await auditClassification(state.partNumber, state.description, state.refinedContext, levelName, code, title);
-
-        if (audit.is_correct) {
-            appendTrace(`Audit CORRECT.`, "success");
-            bestResult = { code, title, confidence: classification.confidence, reasoning: classification.reasoning };
+        
+        if (audit.is_correct || attempt >= 1) {
+            if (audit.is_correct) appendTrace(`${levelName} Audit PASSED.`, "success");
+            else appendTrace(`${levelName} Audit FAILED after retry. Moving forward anyway.`, "warning");
+            
+            finalResult = { 
+                code, title, confidence: classification.confidence, reasoning: classification.reasoning,
+                debug: { ...classification._debug, audit }
+            };
             break;
         } else {
-            appendTrace(`Audit INCORRECT: ${audit.reasoning}`, "warning");
+            appendTrace(`${levelName} Audit FAILED: ${audit.reasoning}. Retrying...`, "warning");
+            delete options[code]; 
+            feedback = `PREVIOUS REJECTION: You selected "${title}" (${code}). Auditor rejected it: "${audit.reasoning}". PICK A DIFFERENT OPTION.`;
             attempt++;
-            if (attempt < 2) {
-                appendTrace("Retrying classification with auditor feedback...", "info");
-                delete options[code]; // Ban this code from the enum
-                feedback = `PREVIOUS REJECTION: You selected "${title}" (Code ${code}). Auditor rejected it: "${audit.reasoning}". Suggested alternative: "${audit.suggested_alternative || 'None'}". Pick a DIFFERENT valid code.`;
-            } else {
-                appendTrace("Max retries reached. Halting.", "error");
-                bestResult = {
-                    code,
-                    title: `${title} ⚠️ (Auditor Rejected)`,
-                    confidence: 0,
-                    reasoning: classification.reasoning + ` ⚠️ (Failed Audit)`
-                };
-            }
         }
     }
 
-    if (!bestResult) {
-        return { confidence: 0, title: "Failed", code: "", reasoning: "No options available." };
+    if (!finalResult) {
+        return { code: "", title: "Failed", confidence: 0 };
     }
 
-    let goNext = bestResult.confidence >= state.threshold;
-    // Don't go next if we are at L4
-    let isFinal = cardLevel === 4 || !goNext;
-
-    renderCard(cardLevel, bestResult.code, bestResult.title, bestResult.confidence, bestResult.reasoning, isFinal, finalDebug);
-    return bestResult;
+    renderCard(cardLevel, finalResult.code, finalResult.title, finalResult.confidence, finalResult.reasoning, cardLevel === 4, finalResult.debug);
+    return finalResult;
 }
 
 async function l1Node(state) {
     appendTrace("Querying L1 Segment...");
-    const res = await executeLevelWithRetry(state, "Segment (Level 1)", () => getSegments(), "", 1);
-
-    return {
-        l1Code: res.code,
-        l1Title: res.title,
-        l1Conf: res.confidence,
-        finalLevel: 1,
-        lastCode: res.code,
-        lastTitle: res.title
+    const res = await executeLevel(state, "Segment (Level 1)", () => getSegments(), "", 1, null);
+    return { 
+        l1Code: res.code, l1Title: res.title, l1Conf: res.confidence, 
+        lastCode: res.code, lastTitle: res.title, finalLevel: 1 
     };
 }
 
 async function l2Node(state) {
     appendTrace("Querying L2 Family...");
-    const res = await executeLevelWithRetry(state, "Family (Level 2)", () => getFamilies(state.l1Code), `L1 ${state.l1Code}: ${state.l1Title}`, 2);
-
-    return {
-        l2Code: res.code,
-        l2Title: res.title,
-        l2Conf: res.confidence,
-        finalLevel: 2,
-        lastCode: res.code,
-        lastTitle: res.title
+    const res = await executeLevel(state, "Family (Level 2)", () => getFamilies(state.l1Code), `L1: ${state.l1Title}`, 2, state.l1Code);
+    return { 
+        l2Code: res.code, l2Title: res.title, l2Conf: res.confidence, 
+        lastCode: res.code, lastTitle: res.title, finalLevel: 2 
     };
 }
 
 async function l3Node(state) {
     appendTrace("Querying L3 Class...");
-    const res = await executeLevelWithRetry(state, "Class (Level 3)", () => getClasses(state.l1Code, state.l2Code), `L1 ${state.l1Code} -> L2 ${state.l2Code}`, 3);
-
-    return {
-        l3Code: res.code,
-        l3Title: res.title,
-        l3Conf: res.confidence,
-        finalLevel: 3,
-        lastCode: res.code,
-        lastTitle: res.title
+    const res = await executeLevel(state, "Class (Level 3)", () => getClasses(state.l1Code, state.l2Code), `L1: ${state.l1Title} > L2: ${state.l2Title}`, 3, state.l2Code);
+    return { 
+        l3Code: res.code, l3Title: res.title, l3Conf: res.confidence, 
+        lastCode: res.code, lastTitle: res.title, finalLevel: 3 
     };
 }
 
 async function l4Node(state) {
     appendTrace("Querying L4 Commodity...");
-    const res = await executeLevelWithRetry(state, "Commodity (Level 4)", () => getCommodities(state.l1Code, state.l2Code, state.l3Code), `L1 ${state.l1Code} -> L2 ${state.l2Code} -> L3 ${state.l3Code}`, 4);
-
-    return {
-        l4Code: res.code,
-        l4Title: res.title,
-        l4Conf: res.confidence,
-        finalLevel: 4,
-        lastCode: res.code,
-        lastTitle: res.title
+    const res = await executeLevel(state, "Commodity (Level 4)", () => getCommodities(state.l1Code, state.l2Code, state.l3Code), `L1: ${state.l1Title} > L2: ${state.l2Title} > L3: ${state.l3Title}`, 4, state.l3Code);
+    return { 
+        l4Code: res.code, l4Title: res.title, l4Conf: res.confidence, 
+        lastCode: res.code, lastTitle: res.title, finalLevel: 4 
     };
 }
 
-// Edge Routers
+// Routers (Linear flow, retries handled inside nodes)
 function routeL1(state) {
-    if (state.l1Conf < state.threshold) return END;
-    if (Object.keys(getFamilies(state.l1Code)).length === 0) return END;
+    if (!state.l1Code) return END;
     return "l2";
 }
 
 function routeL2(state) {
-    if (state.l2Conf < state.threshold) return END;
-    if (Object.keys(getClasses(state.l1Code, state.l2Code)).length === 0) return END;
+    if (!state.l2Code) return END;
     return "l3";
 }
 
 function routeL3(state) {
-    if (state.l3Conf < state.threshold) return END;
-    if (Object.keys(getCommodities(state.l1Code, state.l2Code, state.l3Code)).length === 0) return END;
+    if (!state.l3Code) return END;
     return "l4";
 }
 
@@ -295,16 +268,19 @@ els.classifyBtn.addEventListener('click', async () => {
     els.classifyBtn.disabled = true;
     els.classifyBtn.textContent = '⏳ Classifying...';
     els.resultsContainer.innerHTML = '';
-    const threshold = parseInt(els.confSlider.value) / 100.0;
-
+    
+    // Clear candidates list
+    els.candidatesAccordion.classList.add('hidden');
+    els.candidatesAccordion.classList.remove('open');
+    els.candidatesList.innerHTML = '<div class="empty-state" style="min-height: 80px; font-size: 0.75rem;">Waiting for retrieval...</div>';
+    
     try {
         appendTrace(`Starting LangGraph workflow for: ${partNumber || 'N/A'} - ${description}`);
 
         // Invoke Graph
         const finalState = await app.invoke({
             partNumber: partNumber,
-            description: description,
-            threshold: threshold
+            description: description
         });
 
         renderFinalSummary(finalState.lastCode, finalState.lastTitle, finalState.finalLevel);

@@ -10,22 +10,23 @@ export const els = {
     classifyBtn: document.getElementById('classifyBtn'),
     partNumberInput: document.getElementById('partNumber'),
     descriptionInput: document.getElementById('description'),
-    confSlider: document.getElementById('confidenceThreshold'),
-    confValue: document.getElementById('confValue'),
     resultsContainer: document.getElementById('resultsContainer'),
     traceLog: document.getElementById('traceLog'),
     accordionHeader: document.getElementById('traceHeader'),
-    accordion: document.querySelector('.accordion'),
-    traceContent: document.getElementById('traceContent')
+    accordion: document.getElementById('traceAccordion'),
+    traceContent: document.getElementById('traceContent'),
+    candidatesAccordion: document.getElementById('candidatesAccordion'),
+    candidatesHeader: document.getElementById('candidatesHeader'),
+    candidatesList: document.getElementById('candidatesList')
 };
 
 export function initUI() {
-    els.confSlider.addEventListener('input', (e) => {
-        els.confValue.textContent = `${e.target.value}%`;
-    });
-
     els.accordionHeader.addEventListener('click', () => {
         els.accordion.classList.toggle('open');
+    });
+
+    els.candidatesHeader.addEventListener('click', () => {
+        els.candidatesAccordion.classList.toggle('open');
     });
 }
 
@@ -37,33 +38,29 @@ export function appendTrace(message, type = 'info') {
     els.traceContent.scrollTop = els.traceLog.scrollHeight;
 }
 
-const LEVEL_ICONS = { 1: "📦", 2: "📂", 3: "🗂", 4: "🏷" };
-const LEVEL_NAMES = { 1: "Segment", 2: "Family", 3: "Class", 4: "Commodity" };
-const CONF_COLOR = (c) => c >= 0.75 ? "var(--success)" : c >= 0.50 ? "var(--warning)" : "var(--error)";
+const LEVEL_NAMES = {
+    1: 'SEGMENT',
+    2: 'FAMILY',
+    3: 'CLASS',
+    4: 'COMMODITY'
+};
 
-export function renderCard(level, code, title, confidence, reasoning, isFinal = false, debugInfo = null) {
-    const pct = Math.round(confidence * 100);
-    const color = CONF_COLOR(confidence);
-    const icon = LEVEL_ICONS[level];
-    const name = LEVEL_NAMES[level];
-    
+export function renderCard(level, title, code, confidence, reasoning, isFinal = false, debugInfo = null) {
     const card = document.createElement('div');
     card.className = 'level-card';
-    card.style.animationDelay = `${(level - 1) * 0.1}s`;
     
+    const name = LEVEL_NAMES[level] || 'LEVEL';
+    const confColor = confidence > 0.8 ? 'var(--success)' : confidence > 0.6 ? 'var(--warning)' : 'var(--error)';
+
     let debugHtml = '';
     if (debugInfo) {
-        // Escape HTML for safety
         const esc = (str) => str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         debugHtml = `
-            <details class="debug-panel" style="margin-top: 1rem; padding: 0.5rem; background: var(--bg-base); border: 1px solid var(--border-color); border-radius: 0.5rem; font-size: 0.75rem;">
-                <summary style="cursor: pointer; color: var(--accent-2); font-weight: 600;">🔍 Debug Trace</summary>
-                <div style="margin-top: 0.75rem; white-space: pre-wrap; color: var(--text-muted); max-height: 300px; overflow-y: auto; font-family: monospace;">
+            <details class="debug-panel" style="margin-top: 1rem; padding: 0.75rem; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 0.5rem; font-size: 0.7rem;">
+                <summary style="cursor: pointer; color: var(--accent-2); font-weight: 700; font-family: var(--font-heading);">🔍 DEBUG TRACE</summary>
+                <div style="margin-top: 0.75rem; white-space: pre-wrap; color: var(--text-muted); max-height: 250px; overflow-y: auto; font-family: 'JetBrains Mono', monospace; line-height: 1.4;">
 <strong style="color:var(--text-primary)">--- SYSTEM PROMPT ---</strong>
 ${esc(debugInfo.systemPrompt)}
-
-<strong style="color:var(--text-primary)">--- HUMAN PROMPT (CONTEXT) ---</strong>
-${esc(debugInfo.humanPrompt)}
 
 <strong style="color:var(--text-primary)">--- LLM OUTPUT ---</strong>
 ${esc(debugInfo.rawOutput)}
@@ -73,50 +70,51 @@ ${esc(debugInfo.rawOutput)}
     }
 
     card.innerHTML = `
-        <div class="level-card-header">
-            <span style="font-size: 1.25rem">${icon}</span>
-            <span class="level-badge">Level ${level} · ${name}</span>
-            ${isFinal ? '<span class="final-badge">FINAL</span>' : ''}
-        </div>
-        <div class="level-title">${title}</div>
-        <div class="level-code">Code: ${code}</div>
+        <span class="level-badge">L${level} · ${name} ${isFinal ? '· FINAL SELECTION' : ''}</span>
+        <h4 class="level-title">${title}</h4>
+        <div class="level-code">${code}</div>
         
-        <div class="conf-bar-container">
-            <div class="conf-bar" style="width: ${pct}%; background-color: ${color}"></div>
+        <div class="confidence-indicator">
+            <div class="conf-bar-bg">
+                <div class="conf-bar-fill" style="width: ${confidence * 100}%; background: ${confColor};"></div>
+            </div>
+            <span style="font-size: 0.75rem; font-weight: 800; color: ${confColor}; min-width: 35px;">${Math.round(confidence * 100)}%</span>
         </div>
-        <div class="conf-text" style="color: ${color}">${pct}% confidence</div>
         
-        <div class="reasoning">💬 ${reasoning}</div>
+        <p class="reasoning" style="margin-top: 0.75rem; padding-top: 0.75rem;">${reasoning}</p>
         ${debugHtml}
     `;
+    
     els.resultsContainer.appendChild(card);
+    card.scrollIntoView({ behavior: 'smooth', block: 'end' });
 }
 
 export function renderFinalSummary(code, title, level) {
     const summary = document.createElement('div');
     summary.className = 'final-summary';
     summary.innerHTML = `
-        <div class="final-summary-label">Final UNSPSC Code</div>
-        <div class="final-summary-code">${code}</div>
-        <div class="final-summary-title">${title}</div>
-        <div style="font-size: 0.75rem; color: #64748b; margin-top: 0.5rem">Classified to Level ${level} · ${LEVEL_NAMES[level]}</div>
+        <div style="font-size: 0.7rem; font-weight: 800; color: var(--accent-1); text-transform: uppercase; letter-spacing: 0.15em; margin-bottom: 0.75rem;">Classification Complete</div>
+        <div style="font-family: 'JetBrains Mono', monospace; font-size: 2.5rem; font-weight: 800; color: white; margin-bottom: 0.5rem; letter-spacing: -0.02em;">${code}</div>
+        <div style="font-family: var(--font-heading); font-size: 1.25rem; font-weight: 700; color: var(--text-primary);">${title}</div>
+        <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.5rem;">Level ${level} · UNSPSC v24</div>
     `;
     els.resultsContainer.appendChild(summary);
+    summary.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
-export function renderSearchContext(query, snippet, title = "✨ LLM Refined Web Context") {
+export function renderSearchContext(query, snippet, title = "✨ Web Research Distillation") {
     const card = document.createElement('div');
-    card.className = 'glass-sub';
-    card.style.marginBottom = '1rem';
+    card.className = 'level-card';
+    card.style.background = 'linear-gradient(135deg, rgba(56, 189, 248, 0.05), rgba(129, 140, 248, 0.05))';
+    card.style.borderColor = 'rgba(56, 189, 248, 0.2)';
+    
     card.innerHTML = `
-        <div style="font-size: 0.75rem; font-weight: 700; color: var(--accent-1); text-transform: uppercase; margin-bottom: 0.5rem">
-            ${title}
+        <span class="level-badge" style="color: var(--accent-1); margin-bottom: 0.25rem;">${title}</span>
+        <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.5rem;">
+            <strong style="color: var(--text-primary)">Topic:</strong> ${query}
         </div>
-        <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.5rem;">
-            <strong>Query:</strong> ${query}
-        </div>
-        <div style="font-size: 0.85rem; color: var(--text-muted); font-style: italic; border-left: 2px solid var(--border-color); padding-left: 0.5rem;">
-            ${snippet || 'No useful context found.'}
+        <div style="font-size: 0.8rem; color: var(--text-primary); line-height: 1.5; border-left: 2px solid var(--accent-1); padding-left: 0.75rem; font-style: italic;">
+            ${snippet}
         </div>
     `;
     els.resultsContainer.appendChild(card);
@@ -128,4 +126,35 @@ export function renderError(message) {
     errorDiv.style.color = 'var(--error)';
     errorDiv.textContent = `Error: ${message}`;
     els.resultsContainer.appendChild(errorDiv);
+}
+
+export function renderTopCandidates(candidates) {
+    els.candidatesAccordion.classList.remove('hidden');
+    els.candidatesAccordion.classList.add('open');
+    els.candidatesList.innerHTML = '';
+
+    if (candidates.length === 0) {
+        els.candidatesList.innerHTML = '<div class="empty-state">No candidates found.</div>';
+        return;
+    }
+
+    candidates.forEach((c, i) => {
+        const item = document.createElement('div');
+        item.style.padding = '0.75rem';
+        item.style.background = 'var(--bg-sub)';
+        item.style.borderRadius = '10px';
+        item.style.border = '1px solid var(--border-color)';
+        item.style.fontSize = '0.75rem';
+        item.style.animation = `slideUp 0.3s ease forwards ${i * 0.05}s`;
+        item.style.opacity = '0';
+        
+        item.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.25rem;">
+                <strong style="color: var(--text-primary);">${c.title}</strong>
+            </div>
+            <div style="font-family: monospace; color: var(--accent-1); font-size: 0.7rem; margin-bottom: 0.25rem;">${c.code}</div>
+            <div style="color: var(--text-muted); font-size: 0.65rem; line-height: 1.3;">${c.path}</div>
+        `;
+        els.candidatesList.appendChild(item);
+    });
 }

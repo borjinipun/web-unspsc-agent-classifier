@@ -3,7 +3,7 @@ import * as webllm from "https://esm.run/@mlc-ai/web-llm";
 import { appendTrace, els } from './ui.js';
 
 let engine = null;
-export const SELECTED_MODEL = "Qwen2.5-1.5B-Instruct-q4f16_1-MLC";
+export const SELECTED_MODEL = "Phi-3.5-mini-instruct-q4f16_1-MLC";
 
 export async function initEngine(selectedModel) {
     if (engine) return true;
@@ -94,10 +94,10 @@ Description: ${description}`;
     }
 
     humanPrompt += `\n
-=== AVAILABLE CODES ===
+=== AVAILABLE CATEGORIES ===
 ${optsText}
 
-Analyze the product and select the most appropriate Code from the available options. Carefully read and evaluate the '(Definition: ...)' provided for each code to ensure the product perfectly matches the category's intended scope.
+Analyze the product and select the most appropriate Category from the available options. The options are provided in 'Segment > Family > Class > Commodity' format. Carefully evaluate the category title and definition to ensure the best possible match.
 
 Output your decision strictly matching this JSON schema:
 {
@@ -177,7 +177,7 @@ Web Context: ${refinedContext || 'None'}
 Level: ${levelName}
 Category: ${title} (Code: ${code})
 
-Is this classification correct and suitable? Or is there a completely different Category/Segment it should belong to instead?
+Is this classification correct and suitable? Be reasonable: if the category is a good match for the product's primary function, mark it correct. Reject only if it is completely logically detached (e.g., calling a chemical a 'live animal').
 Output JSON format:
 {
   "is_correct": true, // or false

@@ -46,24 +46,39 @@ export async function prepareIndex() {
     appendTrace(`Indexed ${index.length} commodities for retrieval.`, "success");
 }
 
-export async function searchCandidates(query, k = 30) {
+export async function searchCandidates(query, k = 30, parentCode = null) {
     if (!embedder) await initVectorEngine();
     
+    let subIndex = index;
+    if (parentCode) {
+        // Filter by parent code prefix (e.g. "31" for Segment, "3111" for Family)
+        const prefix = parentCode.replace(/0+$/, ''); 
+        subIndex = index.filter(item => item.code.startsWith(prefix));
+        appendTrace(`Searching within subtree ${parentCode} (${subIndex.length} items)...`);
+    }
+
     appendTrace(`Searching top ${k} candidates for: "${query.substring(0, 50)}..."`);
     
-    // Basic scoring: keyword match in title/definition + path
-    const words = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+    // Enhanced scoring: Handle hyphens, slashes and improve partial matches
+    const cleanQuery = query.toLowerCase().replace(/[^a-z0-9]/g, ' ');
+    const words = cleanQuery.split(/\s+/).filter(w => w.length > 1);
     
-    const scored = index.map(item => {
+    const scored = subIndex.map(item => {
         let score = 0;
         const text = item.fullText.toLowerCase();
+        const cleanText = text.replace(/[^a-z0-9]/g, ' ');
         
         words.forEach(word => {
-            if (text.includes(word)) {
+            // Check original and cleaned text
+            if (text.includes(word) || cleanText.includes(word)) {
                 score += 1;
-                if (item.title.toLowerCase().includes(word)) score += 2;
+                // Bonus for title matches
+                if (item.title.toLowerCase().includes(word)) score += 3;
             }
         });
+        
+        // Exact title match bonus
+        if (item.title.toLowerCase() === cleanQuery) score += 10;
         
         return { ...item, score };
     });
