@@ -4,11 +4,16 @@ A fully private, 100% offline, local-first web application that classifies procu
 
 Powered by **WebLLM** and **WebGPU**, this application runs a large language model (`Phi-3.5-mini-instruct`) entirely inside your browser. No API keys, no server costs, and absolutely zero data leaves your machine.
 
+## 🌟 Live URL
+
+🔗 Use the app at [https://borjinipun.github.io/web-unspsc-agent-classifier/](https://borjinipun.github.io/web-unspsc-agent-classifier/)
+
 ## Features
 
 - **100% Client-Side Inference:** Powered by `@mlc-ai/web-llm` utilizing your device's GPU via WebGPU.
-- **Agentic Classification Loop:** Iteratively navigates the UNSPSC taxonomy (Segment -> Family -> Class -> Commodity) using confidence-gated logic.
-- **Context Refinement:** Automatically fetches DuckDuckGo web snippets and uses the LLM to distill them into actionable context (Industry, Use Case, Category) before classification.
+- **Agentic LangGraph Orchestration:** Iteratively navigates the UNSPSC taxonomy (Segment -> Family -> Class -> Commodity) using a custom, 100% offline implementation of the LangGraph state-based architecture.
+- **Retrospective Auditing:** At each classification level, a secondary LLM auditor dynamically reviews the chosen category. If hallucination or incorrect logic is detected, the agent halts to prevent bad routing and suggests an alternative.
+- **Resilient Context Extraction:** Automatically fetches web search snippets to distill actionable context. If the web proxy fails or you are offline, it seamlessly falls back to **Zero-Shot Context Inference**, predicting the industry and use-case purely from the Part Number.
 - **Flexible Hardware Support:** Dynamically switch between Gemma-2B (Mobile/Light), Phi-3.5-mini (Balanced), and Llama-3.1-8B (Heavy laptops).
 
 ## Tech Stack

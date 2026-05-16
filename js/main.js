@@ -1,8 +1,8 @@
 // main.js
 import { els, initUI, appendTrace, renderCard, renderFinalSummary, renderSearchContext, renderError } from './ui.js';
 import { loadUNSPSC, isUNSPSCLoaded, getSegments, getFamilies, getClasses, getCommodities } from './unspsc.js';
-import { initEngine, isEngineLoaded, classifyLevel, refineSearchContext } from './llm.js';
-import { StateGraph, START, END, Annotation } from "@langchain/langgraph";
+import { initEngine, isEngineLoaded, classifyLevel, refineSearchContext, auditClassification } from './llm.js';
+import { StateGraph, START, END, Annotation } from "./langgraph.js";
 import { performWebSearch } from './search.js';
 
 // Initialize UI
@@ -74,30 +74,58 @@ const AgentState = Annotation.Root({
 async function searchNode(state) {
     const query = `${state.partNumber} ${state.description}`.trim();
     let searchContext = await performWebSearch(query);
-    let refinedContext = "";
-    if (searchContext) {
-        refinedContext = await refineSearchContext(state.partNumber, state.description, searchContext);
-        renderSearchContext(query, refinedContext);
-    }
+    
+    // Always refine/infer context, even if web search fails
+    let refinedContext = await refineSearchContext(state.partNumber, state.description, searchContext);
+    
+    const title = searchContext ? "✨ LLM Refined Web Context" : "🧠 LLM Zero-Shot Inferred Context";
+    renderSearchContext(query, refinedContext, title);
+    
     return { refinedContext };
+}
+
+// Verification Helper
+async function verifyLevel(state, levelName, code, title, originalConfidence, originalReasoning) {
+    const audit = await auditClassification(state.partNumber, state.description, state.refinedContext, levelName, code, title);
+    
+    let confidence = originalConfidence;
+    let reasoning = originalReasoning;
+    let modifiedTitle = title;
+    
+    if (!audit.is_correct) {
+        appendTrace(`Audit INCORRECT: ${audit.reasoning}`, "warning");
+        confidence = 0; // Force fail to stop propagation
+        reasoning += ` ⚠️ (Auditor Rejected)`;
+        if (audit.suggested_alternative && audit.suggested_alternative.toLowerCase() !== "none") {
+            modifiedTitle += ` ⚠️ (Auditor Suggests: ${audit.suggested_alternative})`;
+            appendTrace(`Suggested Alternative: ${audit.suggested_alternative}`, "warning");
+        } else {
+            modifiedTitle += ` ⚠️ (Auditor Rejected)`;
+        }
+    } else {
+        appendTrace(`Audit CORRECT.`, "success");
+    }
+    
+    return { confidence, reasoning, title: modifiedTitle };
 }
 
 async function l1Node(state) {
     const segOpts = getSegments();
     appendTrace("Querying L1 Segment...");
     const l1 = await classifyLevel("Segment (Level 1)", segOpts, "", state.partNumber, state.description, state.refinedContext);
-    appendTrace(`L1 Result: ${l1.selected_code} (${segOpts[l1.selected_code]}) conf: ${l1.confidence.toFixed(2)}`, "success");
     
-    let goNext = l1.confidence >= state.threshold;
-    renderCard(1, l1.selected_code, segOpts[l1.selected_code], l1.confidence, l1.reasoning, !goNext, l1._debug);
+    const verified = await verifyLevel(state, "Segment (Level 1)", l1.selected_code, segOpts[l1.selected_code], l1.confidence, l1.reasoning);
+    
+    let goNext = verified.confidence >= state.threshold;
+    renderCard(1, l1.selected_code, verified.title, verified.confidence, verified.reasoning, !goNext, l1._debug);
     
     return { 
         l1Code: l1.selected_code, 
-        l1Title: segOpts[l1.selected_code], 
-        l1Conf: l1.confidence,
+        l1Title: verified.title, 
+        l1Conf: verified.confidence,
         finalLevel: 1,
         lastCode: l1.selected_code,
-        lastTitle: segOpts[l1.selected_code]
+        lastTitle: verified.title
     };
 }
 
@@ -105,18 +133,19 @@ async function l2Node(state) {
     const famOpts = getFamilies(state.l1Code);
     appendTrace("Querying L2 Family...");
     const l2 = await classifyLevel("Family (Level 2)", famOpts, `L1 ${state.l1Code}: ${state.l1Title}`, state.partNumber, state.description, state.refinedContext);
-    appendTrace(`L2 Result: ${l2.selected_code} (${famOpts[l2.selected_code]}) conf: ${l2.confidence.toFixed(2)}`, "success");
     
-    let goNext = l2.confidence >= state.threshold;
-    renderCard(2, l2.selected_code, famOpts[l2.selected_code], l2.confidence, l2.reasoning, !goNext, l2._debug);
+    const verified = await verifyLevel(state, "Family (Level 2)", l2.selected_code, famOpts[l2.selected_code], l2.confidence, l2.reasoning);
+    
+    let goNext = verified.confidence >= state.threshold;
+    renderCard(2, l2.selected_code, verified.title, verified.confidence, verified.reasoning, !goNext, l2._debug);
     
     return {
         l2Code: l2.selected_code,
-        l2Title: famOpts[l2.selected_code],
-        l2Conf: l2.confidence,
+        l2Title: verified.title,
+        l2Conf: verified.confidence,
         finalLevel: 2,
         lastCode: l2.selected_code,
-        lastTitle: famOpts[l2.selected_code]
+        lastTitle: verified.title
     };
 }
 
@@ -124,18 +153,19 @@ async function l3Node(state) {
     const clsOpts = getClasses(state.l1Code, state.l2Code);
     appendTrace("Querying L3 Class...");
     const l3 = await classifyLevel("Class (Level 3)", clsOpts, `L1 ${state.l1Code} -> L2 ${state.l2Code}`, state.partNumber, state.description, state.refinedContext);
-    appendTrace(`L3 Result: ${l3.selected_code} (${clsOpts[l3.selected_code]}) conf: ${l3.confidence.toFixed(2)}`, "success");
     
-    let goNext = l3.confidence >= state.threshold;
-    renderCard(3, l3.selected_code, clsOpts[l3.selected_code], l3.confidence, l3.reasoning, !goNext, l3._debug);
+    const verified = await verifyLevel(state, "Class (Level 3)", l3.selected_code, clsOpts[l3.selected_code], l3.confidence, l3.reasoning);
+    
+    let goNext = verified.confidence >= state.threshold;
+    renderCard(3, l3.selected_code, verified.title, verified.confidence, verified.reasoning, !goNext, l3._debug);
     
     return {
         l3Code: l3.selected_code,
-        l3Title: clsOpts[l3.selected_code],
-        l3Conf: l3.confidence,
+        l3Title: verified.title,
+        l3Conf: verified.confidence,
         finalLevel: 3,
         lastCode: l3.selected_code,
-        lastTitle: clsOpts[l3.selected_code]
+        lastTitle: verified.title
     };
 }
 
@@ -143,17 +173,18 @@ async function l4Node(state) {
     const comOpts = getCommodities(state.l1Code, state.l2Code, state.l3Code);
     appendTrace("Querying L4 Commodity...");
     const l4 = await classifyLevel("Commodity (Level 4)", comOpts, `L1 ${state.l1Code} -> L2 ${state.l2Code} -> L3 ${state.l3Code}`, state.partNumber, state.description, state.refinedContext);
-    appendTrace(`L4 Result: ${l4.selected_code} (${comOpts[l4.selected_code]}) conf: ${l4.confidence.toFixed(2)}`, "success");
     
-    renderCard(4, l4.selected_code, comOpts[l4.selected_code], l4.confidence, l4.reasoning, true, l4._debug);
+    const verified = await verifyLevel(state, "Commodity (Level 4)", l4.selected_code, comOpts[l4.selected_code], l4.confidence, l4.reasoning);
+    
+    renderCard(4, l4.selected_code, verified.title, verified.confidence, verified.reasoning, true, l4._debug);
     
     return {
         l4Code: l4.selected_code,
-        l4Title: comOpts[l4.selected_code],
-        l4Conf: l4.confidence,
+        l4Title: verified.title,
+        l4Conf: verified.confidence,
         finalLevel: 4,
         lastCode: l4.selected_code,
-        lastTitle: comOpts[l4.selected_code]
+        lastTitle: verified.title
     };
 }
 

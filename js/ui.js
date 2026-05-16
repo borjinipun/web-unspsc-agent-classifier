@@ -104,13 +104,13 @@ export function renderFinalSummary(code, title, level) {
     els.resultsContainer.appendChild(summary);
 }
 
-export function renderSearchContext(query, snippet) {
+export function renderSearchContext(query, snippet, title = "✨ LLM Refined Web Context") {
     const card = document.createElement('div');
     card.className = 'glass-sub';
     card.style.marginBottom = '1rem';
     card.innerHTML = `
         <div style="font-size: 0.75rem; font-weight: 700; color: var(--accent-1); text-transform: uppercase; margin-bottom: 0.5rem">
-            ✨ LLM Refined Web Context
+            ${title}
         </div>
         <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.5rem;">
             <strong>Query:</strong> ${query}
