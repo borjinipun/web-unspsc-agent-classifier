@@ -7,6 +7,13 @@
     <meta name="description" content="Privacy-first, 100% offline UNSPSC agentic classifier powered by WebGPU and WebLLM.">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <script type="importmap">
+    {
+      "imports": {
+        "@xenova/transformers": "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2"
+      }
+    }
+    </script>
 </head>
 <body>
     <div class="background-blobs">
@@ -32,9 +39,10 @@
                             </div>
                         </div>
                         <select id="modelSelect" style="width: 100%; padding: 0.5rem; border-radius: 0.4rem; background: var(--bg-base); color: var(--text-primary); border: 1px solid var(--border-color); appearance: auto; outline: none; font-family: var(--font-sans); font-size: 0.85rem;">
-                            <option value="Phi-3.5-mini-instruct-q4f16_1-MLC" selected>Phi-3.5-mini (Balanced)</option>
+                            <option value="Phi-3.5-mini-instruct-q4f16_1-MLC">Phi-3.5-mini (Balanced)</option>
+                            <option value="Qwen2.5-1.5B-Instruct-q4f16_1-MLC" selected>Qwen 2.5 1.5B (Fast & Stable)</option>
                             <option value="gemma-2b-it-q4f16_1-MLC">Gemma-2B (Mobile)</option>
-                            <option value="Llama-3.1-8B-Instruct-q4f32_1-MLC">Llama-3.1 8B (Laptop)</option>
+                            <option value="Llama-3.1-8B-Instruct-q4f32_1-MLC">Llama-3.1 8B (High Accuracy)</option>
                         </select>
                     </div>
 
@@ -72,6 +80,12 @@
                     </div>
                 </div>
 
+                <div id="candidatesSection" class="candidates-section hidden" style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color);">
+                    <h4 style="margin-bottom: 1rem; color: var(--accent-1); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em;">🎯 Top K Retrieval Candidates (N=30)</h4>
+                    <div id="candidatesList" class="candidates-list" style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 300px; overflow-y: auto; padding-right: 0.5rem;">
+                        <!-- Top candidates will be injected here -->
+                    </div>
+                </div>
             </section>
 
             <!-- Right Column: Details & Trace -->

@@ -3,7 +3,7 @@ import * as webllm from "https://esm.run/@mlc-ai/web-llm";
 import { appendTrace, els } from './ui.js';
 
 let engine = null;
-export const SELECTED_MODEL = "Phi-3.5-mini-instruct-q4f16_1-MLC";
+export const SELECTED_MODEL = "Qwen2.5-1.5B-Instruct-q4f16_1-MLC";
 
 export async function initEngine(selectedModel) {
     if (engine) return true;
@@ -67,8 +67,11 @@ export async function refineSearchContext(partNumber, description, rawSearchCont
     return refinement;
 }
 
-export async function classifyLevel(levelName, options, parentPath, partNumber, description, searchContext) {
-    const optsText = Object.entries(options).map(([c, t]) => `  ${c}: ${t}`).join("\n");
+export async function classifyLevel(levelName, options, parentPath, partNumber, description, searchContext, auditorFeedback = null) {
+    const optsText = Object.entries(options).map(([c, obj]) => {
+        let defText = obj.definition ? obj.definition.trim() : "Not provided in UNSPSC taxonomy";
+        return `  ${c}: ${obj.title} (Definition: ${defText})`;
+    }).join("\n");
 
     const systemPrompt = `You are an expert UNSPSC procurement classifier. You MUST output ONLY valid JSON without any markdown formatting.`;
 
@@ -86,14 +89,17 @@ Description: ${description}`;
         humanPrompt += `\nParent Classification: ${parentPath}`;
     }
 
+    if (auditorFeedback) {
+        humanPrompt += `\n\n🚨 AUDITOR FEEDBACK ON PREVIOUS ATTEMPT 🚨\n${auditorFeedback}\nYou MUST select a DIFFERENT code this time. Do NOT select the rejected code.`;
+    }
+
     humanPrompt += `\n
 === AVAILABLE CODES ===
 ${optsText}
 
-Choose the BEST match from the Available Codes above.
-Output EXACTLY the 8-digit code. Do not abbreviate.
+Analyze the product and select the most appropriate Code from the available options. Carefully read and evaluate the '(Definition: ...)' provided for each code to ensure the product perfectly matches the category's intended scope.
 
-Output format MUST be:
+Output your decision strictly matching this JSON schema:
 {
   "selected_code": "exact 8-digit code here",
   "confidence": 0.95,
@@ -110,12 +116,11 @@ Output format MUST be:
         properties: {
             selected_code: {
                 type: "string",
-                enum: Object.keys(options),
-                description: "The selected UNSPSC code"
+                enum: Object.keys(options)
             },
             confidence: {
                 type: "number",
-                description: "Confidence from 0.0 to 1.0"
+                description: "Confidence score between 0.0 and 1.0"
             },
             reasoning: {
                 type: "string",

@@ -16,7 +16,9 @@ export const els = {
     traceLog: document.getElementById('traceLog'),
     accordionHeader: document.getElementById('traceHeader'),
     accordion: document.querySelector('.accordion'),
-    traceContent: document.getElementById('traceContent')
+    traceContent: document.getElementById('traceContent'),
+    candidatesSection: document.getElementById('candidatesSection'),
+    candidatesList: document.getElementById('candidatesList')
 };
 
 export function initUI() {
@@ -128,4 +130,33 @@ export function renderError(message) {
     errorDiv.style.color = 'var(--error)';
     errorDiv.textContent = `Error: ${message}`;
     els.resultsContainer.appendChild(errorDiv);
+}
+
+export function renderTopCandidates(candidates) {
+    els.candidatesSection.classList.remove('hidden');
+    els.candidatesList.innerHTML = '';
+
+    if (candidates.length === 0) {
+        els.candidatesList.innerHTML = '<div style="color: var(--text-muted); font-size: 0.8rem;">No similar categories found.</div>';
+        return;
+    }
+
+    candidates.forEach((c, i) => {
+        const item = document.createElement('div');
+        item.style.padding = '0.75rem';
+        item.style.background = 'var(--bg-base)';
+        item.style.borderRadius = '0.4rem';
+        item.style.borderLeft = `3px solid var(--accent-${(i % 2) + 1})`;
+        item.style.fontSize = '0.8rem';
+        
+        item.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.25rem;">
+                <strong style="color: var(--text-primary);">${c.title}</strong>
+                <code style="font-size: 0.7rem; color: var(--accent-2);">${c.code}</code>
+            </div>
+            <div style="color: var(--text-muted); font-size: 0.7rem; margin-bottom: 0.25rem;">${c.path}</div>
+            <div style="color: var(--text-secondary); font-size: 0.75rem; line-height: 1.4;">${c.definition || 'No definition available.'}</div>
+        `;
+        els.candidatesList.appendChild(item);
+    });
 }
