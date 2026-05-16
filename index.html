@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UNSPSC EdgeClassifier</title>
+    <meta name="description" content="Privacy-first, 100% offline UNSPSC agentic classifier powered by WebGPU and WebLLM.">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="background-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+    </div>
+
+    <div class="container">
+        <header class="app-header" style="text-align: center; margin-bottom: 1rem;">
+            <h1 style="font-size: 2.5rem; margin-bottom: 0;">UNSPSC EdgeClassifier</h1>
+            <p style="font-size: 1rem; margin-bottom: 0; color: var(--accent-1);">100% Local · Privacy First · Agentic Taxonomy</p>
+        </header>
+
+        <main class="app-grid">
+            <section class="panel input-panel glass" style="padding: 1.25rem;">
+                <div class="model-loader" style="margin-bottom: 1.25rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border-color);">
+                    <div class="input-group" style="margin-bottom: 0.75rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                            <label for="modelSelect" style="margin-bottom: 0; font-size: 0.8rem; color: var(--text-secondary);">Inference Engine</label>
+                            <div class="engine-status" style="margin-bottom: 0; font-size: 0.75rem;">
+                                <div class="status-indicator" id="statusDot"></div>
+                                <span id="statusText">Not Loaded</span>
+                            </div>
+                        </div>
+                        <select id="modelSelect" style="width: 100%; padding: 0.5rem; border-radius: 0.4rem; background: var(--bg-base); color: var(--text-primary); border: 1px solid var(--border-color); appearance: auto; outline: none; font-family: var(--font-sans); font-size: 0.85rem;">
+                            <option value="Phi-3.5-mini-instruct-q4f16_1-MLC" selected>Phi-3.5-mini (Balanced)</option>
+                            <option value="gemma-2b-it-q4f16_1-MLC">Gemma-2B (Mobile)</option>
+                            <option value="Llama-3.1-8B-Instruct-q4f32_1-MLC">Llama-3.1 8B (Laptop)</option>
+                        </select>
+                    </div>
+
+                    <button id="loadModelBtn" class="btn primary" style="padding: 0.6rem; font-size: 0.9rem;">Load Model</button>
+                    <div id="progressContainer" class="progress-container hidden">
+                        <div class="progress-bar" id="progressBar"></div>
+                    </div>
+                    <p id="progressText" class="progress-text"></p>
+                </div>
+
+                <div class="input-group" style="margin-bottom: 0.75rem;">
+                    <label for="partNumber" style="font-size: 0.8rem;">Part Number</label>
+                    <input type="text" id="partNumber" placeholder="e.g. 6205-2RS" style="padding: 0.5rem; font-size: 0.9rem;">
+                </div>
+
+                <div class="input-group" style="margin-bottom: 0.75rem;">
+                    <label for="description" style="font-size: 0.8rem;">Description</label>
+                    <textarea id="description" rows="2" placeholder="e.g. Deep groove ball bearing..." style="padding: 0.5rem; font-size: 0.9rem; min-height: 60px;"></textarea>
+                </div>
+
+                <div class="input-group" style="margin-bottom: 1rem;">
+                    <label for="confidenceThreshold" style="font-size: 0.8rem;">Threshold: <span id="confValue">60%</span></label>
+                    <input type="range" id="confidenceThreshold" min="0" max="100" value="60">
+                </div>
+
+                <button id="classifyBtn" class="btn action" style="padding: 0.75rem; font-size: 1rem; margin-top: 0;" disabled>🚀 Classify Part</button>
+            </section>
+
+            <!-- Right Column: Results & Trace -->
+            <section class="panel result-panel glass">
+                <h3>Classification Result</h3>
+                <div id="resultsContainer" class="results-container">
+                    <div class="empty-state">
+                        Ready to classify. Load the model and enter product details.
+                    </div>
+                </div>
+
+            </section>
+
+            <!-- Right Column: Details & Trace -->
+            <section class="panel details-panel glass" style="display: flex; flex-direction: column; gap: 1rem;">
+                <!-- Explainability Section -->
+                <div class="explain-section" style="flex: 1; overflow-y: auto; padding-right: 0.5rem; display: flex; flex-direction: column; gap: 1.5rem;">
+                    
+                    <!-- What is UNSPSC -->
+                    <div>
+                        <h3 style="color: var(--text-primary); font-size: 1.1rem; margin-bottom: 0.5rem;">📦 What is UNSPSC?</h3>
+                        <p style="color: var(--text-secondary); font-size: 0.85rem; line-height: 1.6;">
+                            The <strong>United Nations Standard Products and Services Code (UNSPSC)</strong> is a global taxonomy used to classify all products and services. By standardizing procurement data into 8-digit codes, organizations achieve complete <strong>spend visibility</strong>, automate purchasing analytics, and optimize global supply chains.
+                            <br/><br/>
+                            Historically, mapping messy industrial part descriptions to the correct 8-digit code has been incredibly tedious and error-prone. This tool solves that by using <strong>Agentic AI</strong> to autonomously research and classify parts in seconds.
+                        </p>
+                    </div>
+
+                    <!-- How Decisions are Made -->
+                    <div>
+                        <h3 style="color: var(--text-primary); font-size: 1.1rem; margin-bottom: 0.75rem;">🧠 How Decisions are Made</h3>
+                        
+                        <div style="color: var(--text-secondary); font-size: 0.85rem; line-height: 1.5; display: flex; flex-direction: column; gap: 1rem;">
+                            <div>
+                                <strong style="color: var(--text-primary);">1. Web Search Refinement</strong>
+                                <p style="margin-top: 0.25rem;">Queries DuckDuckGo via proxy. The raw search results are distilled by the LLM into a concise summary of the product's Industry, Use Case, and Category.</p>
+                            </div>
+                            
+                            <div>
+                                <strong style="color: var(--text-primary);">2. Agentic Classification</strong>
+                                <p style="margin-top: 0.25rem;">The refined context is passed into a recursive loop. At each level (Segment → Family → Class → Commodity), the model is prompted with valid UNSPSC codes. It selects the best match with a Confidence Score.</p>
+                            </div>
+                            
+                            <div>
+                                <strong style="color: var(--text-primary);">3. Strict Traceability</strong>
+                                <p style="margin-top: 0.25rem;">The model is mathematically restricted using <strong>JSON Schema Enums</strong> to prevent hallucination. Expand "🔍 Debug Trace" on any card to audit the Prompt and Output.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="accordion" style="margin-top: 0;">
+                    <div class="accordion-header" id="traceHeader">
+                        <span>📋 Agent Trace Log</span>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </div>
+                    <div class="accordion-content" id="traceContent">
+                        <div id="traceLog" class="trace-log"></div>
+                    </div>
+                </div>
+            </section>
+        </main>
+        
+        <footer class="app-footer" style="margin-top: 1rem; text-align: center; font-size: 0.75rem; color: var(--text-muted);">
+            Powered by WebGPU, WebLLM, and UNSPSC v24
+        </footer>
+    </div>
+
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
