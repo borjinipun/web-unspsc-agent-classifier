@@ -42,13 +42,13 @@ export async function refineSearchContext(partNumber, description, rawSearchCont
         appendTrace("Web search failed. Instructing LLM to infer context zero-shot from Part Number and Description...");
     }
 
-    const systemPrompt = "You are a procurement data extraction assistant. Your task is to analyze product information and distill it into a concise summary.";
+    const systemPrompt = "You are a procurement data extraction assistant. Your task is to analyze product information and distill it into a concise summary to facilitate hierarchical UNSPSC classification:.";
 
     let humanPrompt = "";
     if (rawSearchContext) {
-        humanPrompt = `Product: ${partNumber} - ${description}\nRaw Web Search Text: ${rawSearchContext}\n\nExtract the following information based ONLY on the search text:\n1. Category/Type of product\n2. Primary Use Case\n3. Domain/Industry it is used in\n\nOutput ONLY the extracted details in a short, concise paragraph. Do not invent details not found in the text.`;
+        humanPrompt = `Product: ${partNumber} - ${description}\nRaw Web Search Text: ${rawSearchContext}\n\nExtract the following information based ONLY on the search text:\n1. UNSPSC Category/Type of product\n2. Primary Use Case\n3. Domain/Industry it is used in\n\nOutput ONLY the extracted details in a short, concise paragraph. Do not invent details not found in the text.`;
     } else {
-        humanPrompt = `Product: ${partNumber} - ${description}\n\nNo web search data is available. Based ONLY on the product name and description, please infer and predict the following information:\n1. Likely Category/Type of product\n2. Primary Use Case\n3. Domain/Industry it is used in\n\nOutput your predictions in a short, concise paragraph. Be highly logical.`;
+        humanPrompt = `Product: ${partNumber} - ${description}\n\nNo web search data is available. Based ONLY on the product name and description, please infer and predict the following information:\n1. Likely UNSPSCCategory/Type of product\n2. Primary Use Case\n3. Domain/Industry it is used in\n\nOutput your predictions in a short, concise paragraph. Be highly logical.`;
     }
 
     const messages = [
@@ -160,7 +160,7 @@ Output format MUST be:
 export async function auditClassification(partNumber, description, refinedContext, levelName, code, title) {
     appendTrace(`Auditing ${levelName} classification...`, "info");
 
-    const systemPrompt = `You are a strict UNSPSC taxonomy auditor. You MUST output ONLY valid JSON.`;
+    const systemPrompt = `You are a UNSPSC taxonomy auditor. You MUST output ONLY valid JSON.`;
     const humanPrompt = `TASK: Review the following classification and determine if it accurately describes the product.
     
 === PRODUCT INFO ===
